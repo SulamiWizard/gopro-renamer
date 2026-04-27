@@ -10,22 +10,21 @@ use std::{
 #[command(version, about, long_about = "Rename chaptered GoPro video files")]
 struct CliArgs {
     path: Option<PathBuf>,
+
+    // TODO:
+    // add dry run functionality
+    #[arg(short = 'd', long = "dry-run")]
+    dry_run: bool,
 }
 
 fn main() {
     let args = CliArgs::parse();
     // check if directory is a valid directory, if not, use cwd
     let path = args.path.unwrap_or(PathBuf::from("."));
-    // if path.is_dir() {
-    //     println!("is dir");
-    // }
-    // for file in path
     let files = get_files(&path);
     for file in files {
-        // println!("{:?}", file);
         let _ = rename_file(&file);
     }
-    // rename the file
 }
 
 fn get_files(path: &Path) -> Vec<DirEntry> {
