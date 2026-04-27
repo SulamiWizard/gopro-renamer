@@ -10,13 +10,16 @@ use std::{
 #[derive(Debug, Parser)]
 #[command(version, about, long_about = "Rename chaptered GoPro video files")]
 struct Args {
+    /// Path to directory containing GoPro Video Files
     path: Option<PathBuf>,
 
-    #[arg(short = 'd', long = "dry-run")]
+    /// Do a dry run of the program, print out files that would be changed
+    /// without renaming them
+    #[arg(short = 't', long = "dry-run")]
     dry_run: bool,
 
     /// Prefix to add to renamed files.
-    /// Use '$DATE' to prefix with the file's modified date (e.g. '2026-04-27').
+    /// Use '%DATE' to prefix with the file's modified date (e.g. '2026-04-27').
     #[arg(short = 'p', long = "prefix", default_value_t = String::from(""))]
     prefix: String,
 }
@@ -90,14 +93,11 @@ fn get_new_name(file: &DirEntry, prefix: &String) -> String {
     };
 
     if let Some(captures) = re.captures(file_name.as_str()) {
-        let encoding = &captures[1];
+        // let encoding = &captures[1];
         let chapter_number = &captures[2];
         let video_number = &captures[3];
         // Create new file name using these captures
-        new_name = format!(
-            "{}{}_{}_CH{}.MP4",
-            new_prefix, encoding, video_number, chapter_number
-        );
+        new_name = format!("{}_{}_CH{}.MP4", new_prefix, video_number, chapter_number);
     }
     new_name
 }
