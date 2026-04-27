@@ -1,1 +1,3 @@
 /target
+/test-input
+generate-test-files.fish

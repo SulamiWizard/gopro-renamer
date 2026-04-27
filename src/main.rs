@@ -8,22 +8,22 @@ use std::{
 
 #[derive(Debug, Parser)]
 #[command(version, about, long_about = "Rename chaptered GoPro video files")]
-struct CliArgs {
+struct Args {
     path: Option<PathBuf>,
 
     // TODO:
-    // add dry run functionality
+    // add prefix support
     #[arg(short = 'd', long = "dry-run")]
     dry_run: bool,
 }
 
 fn main() {
-    let args = CliArgs::parse();
+    let args = Args::parse();
     // check if directory is a valid directory, if not, use cwd
     let path = args.path.unwrap_or(PathBuf::from("."));
     let files = get_files(&path);
     for file in files {
-        let _ = rename_file(&file);
+        let _ = rename_file(&file, args.dry_run);
     }
 }
 
@@ -48,14 +48,22 @@ fn check_file_extension(file: &DirEntry, ext: &str) -> bool {
         .ends_with(ext)
 }
 
-fn rename_file(file: &DirEntry) -> io::Result<()> {
+fn rename_file(file: &DirEntry, dry_run: bool) -> io::Result<()> {
     let file_path = file.path();
     let new_file_name = get_new_name(file.file_name().to_str().unwrap());
 
     if let Some(parent_dir) = file_path.parent() {
         let new_file_full_path = parent_dir.join(new_file_name);
 
-        rename(file.path(), new_file_full_path)?;
+        if dry_run {
+            println!(
+                "Would rename: {} -> {}",
+                file.path().to_string_lossy(),
+                new_file_full_path.to_string_lossy()
+            )
+        } else {
+            rename(file.path(), new_file_full_path)?;
+        }
     }
     Ok(())
 }
@@ -63,6 +71,8 @@ fn rename_file(file: &DirEntry) -> io::Result<()> {
 fn get_new_name(file_name: &str) -> String {
     let re = Regex::new(r"^(G[HX])([0-9]{2})([0-9]{4})\.MP4$").unwrap();
     let mut new_name: String = String::from(file_name);
+
+    // TODO: add custom prefixes, including date functionality
 
     if let Some(captures) = re.captures(file_name) {
         let encoding = &captures[1];

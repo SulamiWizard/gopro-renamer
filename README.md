@@ -69,7 +69,6 @@ Shown below is [GoPro's naming scheme for chaptered video files](https://communi
 ## Planned Features
 
 - Custom prefixes (including the ability to put the date before the filename)
-- Dry runs
 - The ability to combine chapters together into one singular video file
 
 ## Building
