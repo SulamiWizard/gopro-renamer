@@ -16,7 +16,7 @@ struct Args {
 
     /// Do a dry run of the program, print out files that would be changed
     /// without renaming them
-    #[arg(short = 't', long = "dry-run")]
+    #[arg(short = 'd', long = "dry-run")]
     dry_run: bool,
 
     /// Prefix to add to renamed files.
@@ -41,59 +41,7 @@ fn main() {
         // If the concatenate flag is true, rather than rename the files, we will sort the files
         // into a hashmap with the video number being the key, then concatenate the files associated
         // with each key together
-        let mut hashfiles: HashMap<String, Vec<DirEntry>> = HashMap::new();
-        // TODO: refactor code
-        for file in files {
-            let entry = hashfiles.entry(get_file_number(&file)).or_default();
-            entry.push(file);
-        }
-
-        // Sort the files by chapter number because read_dir can read in an arbitrary order
-        for files in hashfiles.values_mut() {
-            files.sort_by_key(get_chapter_number);
-        }
-
-        // Create file for ffmpeg to use for concatenating videos
-        for (video_number, chapters) in hashfiles.iter() {
-            let concat_list = chapters
-                .iter()
-                .map(|f| {
-                    format!(
-                        "file '{}'",
-                        f.path().canonicalize().unwrap().to_string_lossy()
-                    )
-                })
-                .collect::<Vec<String>>()
-                .join("\n");
-
-            let temp_path = path.join(format!("{}_concat_list.txt", video_number));
-            fs::write(&temp_path, concat_list).unwrap();
-
-            // Do the ffmpeg command to concatenate the videos
-            let output_name = format!("{}.mp4", video_number);
-            let output_path = path.join(output_name);
-
-            // The command being run is
-            // ffmpeg -f concat -safe 0 -i <temp_path> -c copy <output_path>
-            // temp_path is just a .txt file with the paths to each video file in order
-            // and output_path will be <video_number>.mp4
-            // the -c makes it lossless but will only work with files with the exact same encoding
-            // details, This should be a non issue because the GoPro files will be coming from the
-            // same GoPro, so they should all have the same encoding.
-            //
-            // There are currently no plans to make this work with mismatched files, but i'll
-            // implement if it is necessary
-            std::process::Command::new("ffmpeg")
-                .args(["-f", "concat", "-safe", "0", "-i"])
-                .arg(&temp_path)
-                .args(["-c", "copy"])
-                .arg(&output_path)
-                .status()
-                .unwrap();
-
-            // remove the temp file
-            fs::remove_file(&temp_path).unwrap();
-        }
+        concatenate_files(path, files);
     } else {
         for file in files {
             let _ = rename_file(&file, args.dry_run, &custom_prefix);
@@ -199,4 +147,69 @@ fn get_chapter_number(file: &DirEntry) -> u8 {
         chapter = chapter_number.to_string().parse().unwrap();
     }
     chapter
+}
+
+fn concatenate_files(path: PathBuf, files: Vec<DirEntry>) {
+    let mut hashfiles: HashMap<String, Vec<DirEntry>> = HashMap::new();
+    for file in files {
+        let entry = hashfiles.entry(get_file_number(&file)).or_default();
+        entry.push(file);
+    }
+
+    // Sort the files by chapter number because read_dir can read in an arbitrary order
+    for files in hashfiles.values_mut() {
+        files.sort_by_key(get_chapter_number);
+    }
+
+    // TODO: add dry run functionality
+    // Create file for ffmpeg to use for concatenating videos
+    for (video_number, chapters) in hashfiles.iter() {
+        let temp_file_path = create_temp_file(&path, video_number, chapters);
+
+        run_concatenate_command(&path, video_number, &temp_file_path);
+    }
+}
+
+fn create_temp_file(path: &Path, video_number: &String, chapters: &[DirEntry]) -> PathBuf {
+    let concat_list = chapters
+        .iter()
+        .map(|f| {
+            format!(
+                "file '{}'",
+                f.path().canonicalize().unwrap().to_string_lossy()
+            )
+        })
+        .collect::<Vec<String>>()
+        .join("\n");
+
+    let temp_path = path.join(format!("{}_concat_list.txt", video_number));
+    fs::write(&temp_path, concat_list).unwrap();
+    temp_path
+}
+
+fn run_concatenate_command(path: &Path, video_number: &String, temp_path: &PathBuf) {
+    // Do the ffmpeg command to concatenate the videos
+    let output_name = format!("{}.mp4", video_number);
+    let output_path = path.join(output_name);
+
+    // The command being run is
+    // ffmpeg -f concat -safe 0 -i <temp_path> -c copy <output_path>
+    // temp_path is just a .txt file with the paths to each video file in order
+    // and output_path will be <video_number>.mp4
+    // the -c makes it lossless but will only work with files with the exact same encoding
+    // details, This should be a non issue because the GoPro files will be coming from the
+    // same GoPro, so they should all have the same encoding.
+    //
+    // There are currently no plans to make this work with mismatched files, but i'll
+    // implement if it is necessary
+    std::process::Command::new("ffmpeg")
+        .args(["-f", "concat", "-safe", "0", "-i"])
+        .arg(temp_path)
+        .args(["-c", "copy"])
+        .arg(&output_path)
+        .status()
+        .unwrap();
+
+    // remove the temp file
+    fs::remove_file(temp_path).unwrap();
 }
