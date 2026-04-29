@@ -1,8 +1,8 @@
 # gopro-renamer
 
 A CLI tool for renaming chaptered GoPro video files into a more sortable format.
-No AI has been used in the creation of this code. I was inspired to make this because I have used a python script called
-[gopro_renamer](https://github.com/kcha/gopro_renamer)
+No AI has been used in the creation of this code. I was inspired to make this
+because I have used a python script called [gopro_renamer](https://github.com/kcha/gopro_renamer)
 by kcha and I wanted to practice learning the Rust programming language.
 
 ## Table of Contents
@@ -10,10 +10,12 @@ by kcha and I wanted to practice learning the Rust programming language.
 <!--toc:start-->
 
 - [gopro-renamer](#gopro-renamer)
+  - [Table of Contents](#table-of-contents)
   - [The Problem](#the-problem)
   - [The Solution](#the-solution)
   - [Usage](#usage)
   - [File Name Format](#file-name-format)
+  - [Planned Features](#planned-features)
   - [Building](#building)
   <!--toc:end-->
 
@@ -27,7 +29,9 @@ GX020056.MP4   ← chapter 02 of video 0056
 GX010057.MP4   ← chapter 01 of video 0057
 ```
 
-The encoding type prefix (`GH`/`GX`) as well as the chapter number being before the video number causes files to group by encoding rather than by video, so chapters of the same video don't sort together in a file explorer.
+The encoding type prefix (`GH`/`GX`) as well as the chapter number being before
+the video number causes files to group by encoding rather than by video,
+so chapters of the same video don't sort together in a file explorer.
 
 ## The Solution
 
