@@ -29,6 +29,12 @@ struct Args {
     concatenate: bool,
 }
 
+struct GoProFile {
+    path: DirEntry,
+    video_num: u8,
+    chapter_num: u8,
+}
+
 fn main() {
     let args = Args::parse();
     // check if directory is a valid directory, if not, use cwd
@@ -41,7 +47,7 @@ fn main() {
         // If the concatenate flag is true, rather than rename the files, we will sort the files
         // into a hashmap with the video number being the key, then concatenate the files associated
         // with each key together
-        concatenate_files(path, files);
+        concatenate_files(path, files, args.dry_run);
     } else {
         for file in files {
             let _ = rename_file(&file, args.dry_run, &custom_prefix);
@@ -49,29 +55,41 @@ fn main() {
     }
 }
 
-fn get_files(path: &Path) -> Vec<DirEntry> {
+fn get_files(path: &Path) -> Vec<GoProFile> {
     let mut data = Vec::default();
     if let Ok(read_dir) = fs::read_dir(path) {
         for file in read_dir.flatten() {
-            // check if file ends with .mp4 then push it
-            if check_file_extension(&file, ".mp4") {
-                data.push(file);
+            if let Some(gpfile) = is_gopro_file(file) {
+                data.push(gpfile);
             }
         }
     }
     data
 }
 
-fn check_file_extension(file: &DirEntry, ext: &str) -> bool {
-    file.file_name()
-        .to_str()
-        .unwrap()
-        .to_lowercase()
-        .ends_with(ext)
+fn is_gopro_file(file: DirEntry) -> Option<GoProFile> {
+    // Check if file name matches the GoPro chaptered file naming scheme and create a GoProFile
+    // struct and return it, otherwise return None
+    let re = Regex::new(r"^(G[HX])([0-9]{2})([0-9]{4})\.MP4$").unwrap();
+    let file_name = file.file_name().to_str().unwrap().to_string();
+    let mut goprofile: Option<GoProFile> = None;
+
+    if let Some(captures) = re.captures(file_name.as_str()) {
+        // let encoding = &captures[1];
+        let chapter_number = &captures[2];
+        let video_number = &captures[3];
+        goprofile = Some(GoProFile {
+            path: file,
+            video_num: video_number.parse().unwrap_or_default(),
+            chapter_num: chapter_number.parse().unwrap_or_default(),
+        })
+        // Create new file name using these captures
+    }
+    goprofile
 }
 
-fn rename_file(file: &DirEntry, dry_run: bool, prefix: &String) -> io::Result<()> {
-    let file_path = file.path();
+fn rename_file(file: &GoProFile, dry_run: bool, prefix: &String) -> io::Result<()> {
+    let file_path = file.path.path();
     let new_file_name = get_new_name(file, prefix);
 
     if let Some(parent_dir) = file_path.parent() {
@@ -80,38 +98,30 @@ fn rename_file(file: &DirEntry, dry_run: bool, prefix: &String) -> io::Result<()
         if dry_run {
             println!(
                 "Would rename: {} -> {}",
-                file.path().to_string_lossy(),
+                file_path.to_string_lossy(),
                 new_file_full_path.to_string_lossy()
             )
         } else {
-            rename(file.path(), new_file_full_path)?;
+            rename(file_path, new_file_full_path)?;
         }
     }
     Ok(())
 }
 
-fn get_new_name(file: &DirEntry, prefix: &String) -> String {
-    let re = Regex::new(r"^(G[HX])([0-9]{2})([0-9]{4})\.MP4$").unwrap();
-    let file_name = file.file_name().to_str().unwrap().to_string();
-
-    let mut new_name: String = file_name.to_owned();
-
+fn get_new_name(file: &GoProFile, prefix: &String) -> String {
     let date_string: String;
+
     let new_prefix: &str = if prefix == "%DATE" {
-        date_string = format!("{}_", get_date(file).unwrap_or_default());
+        date_string = format!("{}_", get_date(&file.path).unwrap_or_default());
         &date_string
     } else {
         prefix
     };
 
-    if let Some(captures) = re.captures(file_name.as_str()) {
-        // let encoding = &captures[1];
-        let chapter_number = &captures[2];
-        let video_number = &captures[3];
-        // Create new file name using these captures
-        new_name = format!("{}{}_CH{}.MP4", new_prefix, video_number, chapter_number);
-    }
-    new_name
+    format!(
+        "{}{}_CH{}.MP4",
+        new_prefix, file.video_num, file.chapter_num
+    )
 }
 
 fn get_date(file: &DirEntry) -> io::Result<String> {
@@ -121,62 +131,41 @@ fn get_date(file: &DirEntry) -> io::Result<String> {
     Ok(modified.format("%Y-%m-%d").to_string())
 }
 
-fn get_file_number(file: &DirEntry) -> String {
-    let re = Regex::new(r"^(G[HX])([0-9]{2})([0-9]{4})\.MP4$").unwrap();
-    let file_name = file.file_name().to_str().unwrap().to_string();
-
-    let mut new_name: String = String::from("");
-
-    if let Some(captures) = re.captures(file_name.as_str()) {
-        let video_number = &captures[3];
-        // new_name = format!("{}", video_number);
-        new_name = video_number.to_string();
-    }
-    new_name
-}
-
-fn get_chapter_number(file: &DirEntry) -> u8 {
-    let re = Regex::new(r"^(G[HX])([0-9]{2})([0-9]{4})\.MP4$").unwrap();
-    let file_name = file.file_name().to_str().unwrap().to_string();
-
-    let mut chapter: u8 = 0;
-
-    if let Some(captures) = re.captures(file_name.as_str()) {
-        let chapter_number = &captures[2];
-        // new_name = format!("{}", video_number);
-        chapter = chapter_number.to_string().parse().unwrap();
-    }
-    chapter
-}
-
-fn concatenate_files(path: PathBuf, files: Vec<DirEntry>) {
-    let mut hashfiles: HashMap<String, Vec<DirEntry>> = HashMap::new();
+fn concatenate_files(path: PathBuf, files: Vec<GoProFile>, dryrun: bool) {
+    let mut hashfiles: HashMap<u8, Vec<GoProFile>> = HashMap::new();
     for file in files {
-        let entry = hashfiles.entry(get_file_number(&file)).or_default();
+        let entry = hashfiles.entry(file.video_num).or_default();
         entry.push(file);
     }
 
     // Sort the files by chapter number because read_dir can read in an arbitrary order
     for files in hashfiles.values_mut() {
-        files.sort_by_key(get_chapter_number);
+        files.sort_by_key(|f| f.chapter_num);
     }
 
-    // TODO: add dry run functionality
-    // Create file for ffmpeg to use for concatenating videos
     for (video_number, chapters) in hashfiles.iter() {
-        let temp_file_path = create_temp_file(&path, video_number, chapters);
+        if dryrun {
+            println!("Will combine files:");
+            for chapter in chapters {
+                println!("{}", chapter.path.file_name().to_string_lossy());
+            }
+            println!("As {}.MP4", video_number);
+            println!();
+        } else {
+            let temp_file_path = create_temp_file(&path, video_number, chapters);
 
-        run_concatenate_command(&path, video_number, &temp_file_path);
+            run_concatenate_command(&path, video_number, &temp_file_path);
+        }
     }
 }
 
-fn create_temp_file(path: &Path, video_number: &String, chapters: &[DirEntry]) -> PathBuf {
+fn create_temp_file(path: &Path, video_number: &u8, chapters: &[GoProFile]) -> PathBuf {
     let concat_list = chapters
         .iter()
         .map(|f| {
             format!(
                 "file '{}'",
-                f.path().canonicalize().unwrap().to_string_lossy()
+                f.path.path().canonicalize().unwrap().to_string_lossy()
             )
         })
         .collect::<Vec<String>>()
@@ -187,7 +176,7 @@ fn create_temp_file(path: &Path, video_number: &String, chapters: &[DirEntry]) -
     temp_path
 }
 
-fn run_concatenate_command(path: &Path, video_number: &String, temp_path: &PathBuf) {
+fn run_concatenate_command(path: &Path, video_number: &u8, temp_path: &PathBuf) {
     // Do the ffmpeg command to concatenate the videos
     let output_name = format!("{}.mp4", video_number);
     let output_path = path.join(output_name);
@@ -200,8 +189,8 @@ fn run_concatenate_command(path: &Path, video_number: &String, temp_path: &PathB
     // details, This should be a non issue because the GoPro files will be coming from the
     // same GoPro, so they should all have the same encoding.
     //
-    // There are currently no plans to make this work with mismatched files, but i'll
-    // implement if it is necessary
+    // There are currently no plans to make this work with files that have mismatched encoding
+    // settings
     std::process::Command::new("ffmpeg")
         .args(["-f", "concat", "-safe", "0", "-i"])
         .arg(temp_path)

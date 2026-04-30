@@ -38,9 +38,9 @@ so chapters of the same video don't sort together in a file explorer.
 Renames files to put the video number first, then chapter:
 
 ```
-GX010056.MP4  →  GX_0056_CH01.MP4
-GX020056.MP4  →  GX_0056_CH02.MP4
-GX010057.MP4  →  GX_0057_CH01.MP4
+GX010056.MP4  →  0056_CH01.MP4
+GX020056.MP4  →  0056_CH02.MP4
+GX010057.MP4  →  0057_CH01.MP4
 ```
 
 Now files sort by video number, with chapters in order beneath them.
@@ -55,13 +55,21 @@ gopro-renamer
 gopro-renamer /path/to/videos
 
 # Dry run — preview renames without applying them
-gopro-renamer -d
-gopro-renamer --dry-run
+gopro-renamer -d /path/to/videos
+gopro-renamer --dry-run /path/to/videos
+
+# Concatenate chapters together into 1 single mp4 file per video
+gopro-renamer -c /path/to/videos
+
+# Dry run — preview concatenations without applying them
+gopro-renamer -d -c /path/to/videos
 ```
 
 ## File Name Format
 
 Shown below is [GoPro's naming scheme for chaptered video files](https://community.gopro.com/s/article/GoPro-Camera-File-Naming-Convention?language=en_US)
+
+`GHzzxxxx.MP4`
 
 | Part   | Meaning           |
 | ------ | ----------------- |
@@ -72,7 +80,8 @@ Shown below is [GoPro's naming scheme for chaptered video files](https://communi
 
 ## Planned Features
 
-- The ability to combine chapters together into one singular video file
+- TUI/GUI
+- Better formatted output with colors
 
 ## Building
 
