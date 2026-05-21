@@ -1,5 +1,6 @@
 use chrono::{DateTime, Local};
 use clap::Parser;
+use colored::Colorize;
 use regex::Regex;
 use std::{
     collections::HashMap,
@@ -31,7 +32,7 @@ struct Args {
 
 struct GoProFile {
     path: DirEntry,
-    video_num: u8,
+    video_num: u16,
     chapter_num: u8,
 }
 
@@ -41,6 +42,14 @@ fn main() {
     let path = args.path.unwrap_or(PathBuf::from("."));
     let files = get_files(&path);
 
+    if files.is_empty() {
+        eprintln!(
+            "{}",
+            "No GoPro files found in the specified directory.".yellow()
+        );
+        return;
+    }
+
     let custom_prefix = args.prefix;
 
     if args.concatenate {
@@ -49,9 +58,13 @@ fn main() {
         // with each key together
         concatenate_files(path, files, args.dry_run);
     } else {
+        let mut count: usize = 0;
         for file in files {
-            let _ = rename_file(&file, args.dry_run, &custom_prefix);
+            if rename_file(&file, args.dry_run, &custom_prefix).is_ok() {
+                count += 1;
+            }
         }
+        println!("\n{} {} file(s) renamed.", "Done!".green().bold(), count)
     }
 }
 
@@ -88,7 +101,7 @@ fn is_gopro_file(file: DirEntry) -> Option<GoProFile> {
     goprofile
 }
 
-fn rename_file(file: &GoProFile, dry_run: bool, prefix: &String) -> io::Result<()> {
+fn rename_file(file: &GoProFile, dry_run: bool, prefix: &str) -> io::Result<()> {
     let file_path = file.path.path();
     let new_file_name = get_new_name(file, prefix);
 
@@ -97,18 +110,27 @@ fn rename_file(file: &GoProFile, dry_run: bool, prefix: &String) -> io::Result<(
 
         if dry_run {
             println!(
-                "Would rename: {} -> {}",
-                file_path.to_string_lossy(),
-                new_file_full_path.to_string_lossy()
+                "{} {} {} {}",
+                "[DRY RUN]".yellow().bold(),
+                file_path.file_name().unwrap().to_string_lossy().cyan(),
+                "->".dimmed(),
+                new_file_full_path.to_string_lossy().green()
             )
         } else {
+            println!(
+                "{} {} {} {}",
+                "Renaming:".bold(),
+                file_path.file_name().unwrap().to_string_lossy().cyan(),
+                "->".dimmed(),
+                new_file_full_path.to_string_lossy().green()
+            );
             rename(file_path, new_file_full_path)?;
         }
     }
     Ok(())
 }
 
-fn get_new_name(file: &GoProFile, prefix: &String) -> String {
+fn get_new_name(file: &GoProFile, prefix: &str) -> String {
     let date_string: String;
 
     let new_prefix: &str = if prefix == "%DATE" {
@@ -132,7 +154,7 @@ fn get_date(file: &DirEntry) -> io::Result<String> {
 }
 
 fn concatenate_files(path: PathBuf, files: Vec<GoProFile>, dryrun: bool) {
-    let mut hashfiles: HashMap<u8, Vec<GoProFile>> = HashMap::new();
+    let mut hashfiles: HashMap<u16, Vec<GoProFile>> = HashMap::new();
     for file in files {
         let entry = hashfiles.entry(file.video_num).or_default();
         entry.push(file);
@@ -145,12 +167,16 @@ fn concatenate_files(path: PathBuf, files: Vec<GoProFile>, dryrun: bool) {
 
     for (video_number, chapters) in hashfiles.iter() {
         if dryrun {
-            println!("Will combine files:");
+            println!("{}", "-".repeat(40).dimmed());
+            println!("{} {}.mp4", "Output:".bold(), video_number);
             for chapter in chapters {
-                println!("{}", chapter.path.file_name().to_string_lossy());
+                println!(
+                    "  {} {}",
+                    "+".dimmed(),
+                    chapter.path.file_name().to_string_lossy().dimmed()
+                );
             }
-            println!("As {}.MP4", video_number);
-            println!();
+            println!("{}", "-".repeat(40).dimmed());
         } else {
             let temp_file_path = create_temp_file(&path, video_number, chapters);
 
@@ -159,7 +185,7 @@ fn concatenate_files(path: PathBuf, files: Vec<GoProFile>, dryrun: bool) {
     }
 }
 
-fn create_temp_file(path: &Path, video_number: &u8, chapters: &[GoProFile]) -> PathBuf {
+fn create_temp_file(path: &Path, video_number: &u16, chapters: &[GoProFile]) -> PathBuf {
     let concat_list = chapters
         .iter()
         .map(|f| {
@@ -176,7 +202,7 @@ fn create_temp_file(path: &Path, video_number: &u8, chapters: &[GoProFile]) -> P
     temp_path
 }
 
-fn run_concatenate_command(path: &Path, video_number: &u8, temp_path: &PathBuf) {
+fn run_concatenate_command(path: &Path, video_number: &u16, temp_path: &PathBuf) {
     // Do the ffmpeg command to concatenate the videos
     let output_name = format!("{}.mp4", video_number);
     let output_path = path.join(output_name);
